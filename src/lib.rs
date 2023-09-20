@@ -16,6 +16,27 @@ pub struct FileTypeIdentifier {
     creator: String,
 }
 
+impl FileTypeIdentifier {
+    /// Read a file type identifier from the current position in the file,
+    /// advancing the file to beyond the file type identifier.
+    pub fn read(file: &mut File) -> Self {
+        let mut chunk = vec![0; KB];
+        file.read_exact(&mut chunk).unwrap();
+        let signature = String::from_utf8_lossy(&chunk[..8]).into_owned();
+        assert_eq!(signature, FILE_SIGNATURE);
+
+        let creator_iter = chunk[8..(8 + 512)]
+            .chunks_exact(2)
+            .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap()))
+            .take_while(|&ch| ch != 0);
+        let creator = char::decode_utf16(creator_iter)
+            .collect::<Result<String, _>>()
+            .unwrap();
+
+        Self { signature, creator }
+    }
+}
+
 #[derive(Debug)]
 pub struct Header {
     signature: String,
@@ -34,11 +55,10 @@ impl Header {
     /// Read a header from the current position in the file, advancing the
     /// file to beyond the header.
     pub fn read(file: &mut File) -> Self {
-        let mut header_buffer = vec![0; 4 * MB];
+        let mut header_buffer = vec![0; 128];
         file.read_exact(&mut header_buffer).unwrap();
 
         let signature = String::from_utf8(header_buffer[0..4].to_vec()).unwrap();
-        assert_eq!(signature, HEADER_SIGNATURE);
         let checksum = header_buffer[4..8].try_into().unwrap();
         let sequence_number = u64::from_le_bytes(header_buffer[8..16].try_into().unwrap());
 
@@ -51,6 +71,7 @@ impl Header {
         let log_length = u32::from_le_bytes(header_buffer[68..72].try_into().unwrap());
         let log_offset = u64::from_le_bytes(header_buffer[72..80].try_into().unwrap());
 
+        assert_eq!(signature, HEADER_SIGNATURE);
         assert_eq!(log_version, 0);
         assert_eq!(version, 1);
         assert_eq!(log_length % MB as u32, 0);
@@ -81,21 +102,7 @@ pub struct Vhdx {
 impl Vhdx {
     pub fn load(path: impl AsRef<Path>) -> Vhdx {
         let mut file = std::fs::File::open(path).unwrap();
-        let mut chunk = vec![0; KB];
-        file.read_exact(&mut chunk).unwrap();
-        let signature = String::from_utf8_lossy(&chunk[..8]).into_owned();
-        assert_eq!(signature, FILE_SIGNATURE);
-
-        let creator_iter = chunk[8..(8 + 512)]
-            .chunks_exact(2)
-            .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap()))
-            .take_while(|&ch| ch != 0);
-        let creator = char::decode_utf16(creator_iter)
-            .collect::<Result<String, _>>()
-            .unwrap();
-
-        let file_type_identifier = FileTypeIdentifier { signature, creator };
-
+        let file_type_identifier = FileTypeIdentifier::read(&mut file);
         file.seek(SeekFrom::Start(64 * KB as u64)).unwrap();
         let header_1 = Header::read(&mut file);
         file.seek(SeekFrom::Start(128 * KB as u64)).unwrap();
