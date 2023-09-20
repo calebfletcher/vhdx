@@ -29,7 +29,7 @@ const KB: usize = 1024;
 const MB: usize = KB * KB;
 
 #[derive(Debug)]
-pub struct FileTypeIdentifier {
+struct FileTypeIdentifier {
     signature: String,
     creator: String,
 }
@@ -37,7 +37,7 @@ pub struct FileTypeIdentifier {
 impl FileTypeIdentifier {
     /// Read a file type identifier from the current position in the file,
     /// advancing the file to beyond the file type identifier.
-    pub fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Self {
         let mut buffer = vec![0; KB];
         file.read_exact(&mut buffer).unwrap();
         let signature = String::from_utf8_lossy(&buffer[..8]).into_owned();
@@ -56,7 +56,7 @@ impl FileTypeIdentifier {
 }
 
 #[derive(Debug)]
-pub struct Header {
+struct Header {
     signature: String,
     checksum: [u8; 4],
     sequence_number: u64,
@@ -72,7 +72,7 @@ pub struct Header {
 impl Header {
     /// Read a header from the current position in the file, advancing the
     /// file to beyond the header.
-    pub fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Self {
         let mut buffer = vec![0; 128];
         file.read_exact(&mut buffer).unwrap();
 
@@ -111,7 +111,7 @@ impl Header {
 }
 
 #[derive(Debug)]
-pub struct RegionEntry {
+struct RegionEntry {
     guid: Guid,
     file_offset: u64,
     length: u32,
@@ -119,7 +119,7 @@ pub struct RegionEntry {
 }
 
 impl RegionEntry {
-    pub fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Self {
         let mut buffer = vec![0; 32];
         file.read_exact(&mut buffer).unwrap();
 
@@ -145,7 +145,7 @@ impl RegionEntry {
 }
 
 #[derive(Debug)]
-pub struct RegionTable {
+struct RegionTable {
     signature: String,
     checksum: [u8; 4],
     entries: Vec<RegionEntry>,
@@ -154,7 +154,7 @@ pub struct RegionTable {
 impl RegionTable {
     /// Read a region table from the current position in the file, advancing
     /// the file to beyond the region table.
-    pub fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Self {
         let mut buffer = vec![0; 16];
         file.read_exact(&mut buffer).unwrap();
 
@@ -179,7 +179,7 @@ impl RegionTable {
 }
 
 #[derive(Debug)]
-pub struct Vhdx {
+struct HeaderSection {
     file_type_identifier: FileTypeIdentifier,
     header_1: Header,
     header_2: Header,
@@ -187,26 +187,38 @@ pub struct Vhdx {
     region_table_2: RegionTable,
 }
 
-impl Vhdx {
-    pub fn load(path: impl AsRef<Path>) -> Vhdx {
-        let mut file = std::fs::File::open(path).unwrap();
-        let file_type_identifier = FileTypeIdentifier::read(&mut file);
+impl HeaderSection {
+    fn read(file: &mut File) -> Self {
+        let file_type_identifier = FileTypeIdentifier::read(file);
         file.seek(SeekFrom::Start(64 * KB as u64)).unwrap();
-        let header_1 = Header::read(&mut file);
+        let header_1 = Header::read(file);
         file.seek(SeekFrom::Start(128 * KB as u64)).unwrap();
-        let header_2 = Header::read(&mut file);
+        let header_2 = Header::read(file);
         file.seek(SeekFrom::Start(192 * KB as u64)).unwrap();
-        let region_table_1 = RegionTable::read(&mut file);
+        let region_table_1 = RegionTable::read(file);
         file.seek(SeekFrom::Start(256 * KB as u64)).unwrap();
-        let region_table_2 = RegionTable::read(&mut file);
+        let region_table_2 = RegionTable::read(file);
 
-        Vhdx {
+        Self {
             file_type_identifier,
             header_1,
             header_2,
             region_table_1,
             region_table_2,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct Vhdx {
+    header_section: HeaderSection,
+}
+
+impl Vhdx {
+    pub fn load(path: impl AsRef<Path>) -> Vhdx {
+        let mut file = std::fs::File::open(path).unwrap();
+        let header_section = HeaderSection::read(&mut file);
+        Vhdx { header_section }
     }
 }
 
