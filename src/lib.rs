@@ -4,6 +4,10 @@ use std::{
     path::Path,
 };
 
+use crate::guid::Guid;
+
+mod guid;
+
 static FILE_SIGNATURE: &str = "vhdxfile";
 static HEADER_SIGNATURE: &str = "head";
 
