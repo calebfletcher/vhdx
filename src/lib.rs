@@ -14,6 +14,7 @@ mod guid;
 static FILE_SIGNATURE: &str = "vhdxfile";
 static HEADER_SIGNATURE: &str = "head";
 static REGION_TABLE_SIGNATURE: &str = "regi";
+static METADATA_TABLE_SIGNATURE: &str = "metadata";
 
 static REGION_GUID_BAT: Guid = Guid::from_str("2DC27766-F623-4200-9D64-115E9BFD4A08");
 static REGION_GUID_METADATA: Guid = Guid::from_str("8B7CA206-4790-4B9A-B8FE-575F050F886E");
@@ -104,14 +105,14 @@ impl Header {
 }
 
 #[derive(Debug)]
-struct RegionEntry {
+struct RegionTableEntry {
     guid: Guid,
     file_offset: u64,
     length: u32,
     required: u32,
 }
 
-impl RegionEntry {
+impl RegionTableEntry {
     fn read(file: &mut File) -> Self {
         let mut buffer = vec![0; 32];
         file.read_exact(&mut buffer).unwrap();
@@ -139,7 +140,7 @@ impl RegionEntry {
 struct RegionTable {
     signature: String,
     checksum: [u8; 4],
-    entries: Vec<RegionEntry>,
+    entries: Vec<RegionTableEntry>,
 }
 
 impl RegionTable {
@@ -158,7 +159,7 @@ impl RegionTable {
 
         let mut entries = Vec::with_capacity(entry_count as usize);
         for _ in 0..entry_count {
-            entries.push(RegionEntry::read(file));
+            entries.push(RegionTableEntry::read(file));
         }
 
         Self {
@@ -166,6 +167,69 @@ impl RegionTable {
             checksum,
             entries,
         }
+    }
+}
+
+#[derive(Debug)]
+struct MetadataTableEntry {
+    item_id: Guid,
+    offset: u32,
+    length: u32,
+    is_user: bool,
+    is_virtual_disk: bool,
+    is_required: bool,
+}
+
+impl MetadataTableEntry {
+    fn read(file: &mut File) -> Self {
+        let mut buffer = vec![0; 32];
+        file.read_exact(&mut buffer).unwrap();
+
+        let item_id = Guid::from_bytes(buffer[0..16].try_into().unwrap());
+        let offset = u32::from_le_bytes(buffer[16..20].try_into().unwrap());
+        let length = u32::from_le_bytes(buffer[20..24].try_into().unwrap());
+        let is_user = buffer[24] >> 7 & 1 == 1;
+        let is_virtual_disk = buffer[24] >> 6 & 1 == 1;
+        let is_required = buffer[24] >> 5 & 1 == 1;
+
+        assert!(offset >= 64 * KB as u32);
+        assert!(length <= MB as u32);
+        assert_eq!(length % MB as u32, 0);
+
+        Self {
+            item_id,
+            offset,
+            length,
+            is_user,
+            is_virtual_disk,
+            is_required,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct MetadataTable {
+    signature: String,
+    entries: Vec<MetadataTableEntry>,
+}
+
+impl MetadataTable {
+    fn read(file: &mut File) -> Self {
+        let mut buffer = vec![0; 32];
+        file.read_exact(&mut buffer).unwrap();
+
+        let signature = String::from_utf8(buffer[0..8].to_vec()).unwrap();
+        let entry_count = u16::from_le_bytes(buffer[10..12].try_into().unwrap());
+
+        assert_eq!(signature, METADATA_TABLE_SIGNATURE);
+        assert!(entry_count <= 2047);
+
+        let mut entries = Vec::with_capacity(entry_count as usize);
+        for _ in 0..entry_count {
+            entries.push(MetadataTableEntry::read(file));
+        }
+
+        Self { signature, entries }
     }
 }
 
