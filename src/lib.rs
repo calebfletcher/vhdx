@@ -131,8 +131,6 @@ impl RegionEntry {
         assert_eq!(file_offset % MB as u64, 0);
         assert!(file_offset > MB as u64);
         assert_eq!(length % MB as u32, 0);
-
-        dbg!(guid, REGION_GUID_BAT, REGION_GUID_METADATA);
         assert!(required == 0 || [REGION_GUID_BAT, REGION_GUID_METADATA].contains(&guid));
 
         Self {
