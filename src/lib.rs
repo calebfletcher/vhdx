@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![allow(dead_code)]
+
 use std::{
     fs::File,
     io::{Read, Seek, SeekFrom},
@@ -12,18 +15,8 @@ static FILE_SIGNATURE: &str = "vhdxfile";
 static HEADER_SIGNATURE: &str = "head";
 static REGION_TABLE_SIGNATURE: &str = "regi";
 
-static REGION_GUID_BAT: guid::Guid = guid::Guid::new(
-    0x2DC27766,
-    0xF623,
-    0x4200,
-    [0x9D, 0x64, 0x11, 0x5E, 0x9B, 0xFD, 0x4A, 0x08],
-);
-static REGION_GUID_METADATA: guid::Guid = guid::Guid::new(
-    0x8B7CA206,
-    0x4790,
-    0x4B9A,
-    [0xB8, 0xFE, 0x57, 0x5F, 0x05, 0x0F, 0x88, 0x6E],
-);
+static REGION_GUID_BAT: Guid = Guid::from_str("2DC27766-F623-4200-9D64-115E9BFD4A08");
+static REGION_GUID_METADATA: Guid = Guid::from_str("8B7CA206-4790-4B9A-B8FE-575F050F886E");
 
 const KB: usize = 1024;
 const MB: usize = KB * KB;
@@ -219,14 +212,3 @@ impl Vhdx {
         Vhdx { header_section }
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn it_works() {
-//         let result = add(2, 2);
-//         assert_eq!(result, 4);
-//     }
-// }
