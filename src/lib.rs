@@ -178,6 +178,7 @@ struct MetadataTableEntry {
     is_user: bool,
     is_virtual_disk: bool,
     is_required: bool,
+    is_empty: bool,
 }
 
 impl MetadataTableEntry {
@@ -194,7 +195,11 @@ impl MetadataTableEntry {
 
         assert!(offset >= 64 * KB as u32);
         assert!(length <= MB as u32);
-        assert_eq!(length % MB as u32, 0);
+
+        if length == 0 {
+            assert_eq!(offset, 0);
+        }
+        let is_empty = length == 0;
 
         Self {
             item_id,
@@ -203,6 +208,7 @@ impl MetadataTableEntry {
             is_user,
             is_virtual_disk,
             is_required,
+            is_empty,
         }
     }
 }
@@ -267,12 +273,30 @@ impl HeaderSection {
 #[derive(Debug)]
 pub struct Vhdx {
     header_section: HeaderSection,
+    metadata_table: MetadataTable,
 }
 
 impl Vhdx {
     pub fn load(path: impl AsRef<Path>) -> Vhdx {
         let mut file = std::fs::File::open(path).unwrap();
         let header_section = HeaderSection::read(&mut file);
-        Vhdx { header_section }
+
+        // Find the metadata table
+        let metadata_table_section = header_section
+            .region_table_1
+            .entries
+            .iter()
+            .find(|entry| entry.guid == REGION_GUID_METADATA)
+            .unwrap();
+
+        file.seek(SeekFrom::Start(metadata_table_section.file_offset))
+            .unwrap();
+
+        let metadata_table = MetadataTable::read(&mut file);
+
+        Vhdx {
+            header_section,
+            metadata_table,
+        }
     }
 }
