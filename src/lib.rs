@@ -3,7 +3,7 @@
 
 use std::{
     fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };
 
@@ -385,6 +385,7 @@ impl Vhdx {
     }
 }
 
+#[derive(Debug)]
 pub struct Reader {
     disk: Vhdx,
     offset: u64,
@@ -440,5 +441,15 @@ impl Seek for Reader {
             }
         }
         Ok(self.offset)
+    }
+}
+
+impl Write for Reader {
+    fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+        unimplemented!()
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        unimplemented!()
     }
 }
