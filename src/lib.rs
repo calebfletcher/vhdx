@@ -421,3 +421,24 @@ impl Read for Reader {
         Ok(num_actually_read)
     }
 }
+
+impl Seek for Reader {
+    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+        match pos {
+            SeekFrom::Start(offset) => self.offset = offset,
+            SeekFrom::End(from_end) => {
+                self.offset = self
+                    .disk
+                    .metadata
+                    .virtual_disk_size
+                    .virtual_disk_size()
+                    .checked_add_signed(from_end)
+                    .unwrap()
+            }
+            SeekFrom::Current(offset) => {
+                self.offset = self.offset.checked_add_signed(offset).unwrap()
+            }
+        }
+        Ok(self.offset)
+    }
+}
