@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PayloadBatEntryState {
     NotPresent,
     Undefined,
@@ -43,10 +43,20 @@ impl BatEntry {
 
         Self { state, file_offset }
     }
+
+    pub fn file_offset(&self) -> u64 {
+        self.file_offset
+    }
+
+    pub fn state(&self) -> PayloadBatEntryState {
+        self.state
+    }
 }
 
 #[derive(Debug)]
 pub struct Bat {
+    block_size: u64,
+    chunk_ratio: u64,
     entries: Vec<BatEntry>,
 }
 
@@ -54,25 +64,38 @@ impl Bat {
     pub fn read(file: &mut File, metadata: &crate::Metadata) -> Self {
         let virt_disk_size = metadata.virtual_disk_size.virtual_disk_size();
         let logical_sector_size = metadata.logical_sector_size.logical_sector_size();
-        let block_size = metadata.file_parameters.block_size();
+        let block_size = metadata.file_parameters.block_size() as u64;
+        let chunk_ratio = (2 << 23) * logical_sector_size as u64 / block_size;
+        let payload_blocks_count = div_ceil(virt_disk_size, block_size);
+        let total_bat_entries = payload_blocks_count + (payload_blocks_count - 1) / chunk_ratio;
 
-        let chunk_ratio = (2 << 23) * logical_sector_size as u64 / block_size as u64;
-
-        let payload_blocks_count = div_ceil(virt_disk_size, block_size as u64);
-
-        let total_bat_entries =
-            payload_blocks_count + div_floor(payload_blocks_count - 1, chunk_ratio);
+        if total_bat_entries - payload_blocks_count != 0 {
+            unimplemented!("sector bitmap blocks");
+        }
 
         let entries = (0..total_bat_entries)
             .map(|_| BatEntry::read(file))
             .collect();
 
-        Self { entries }
+        Self {
+            block_size,
+            chunk_ratio,
+            entries,
+        }
     }
-}
 
-const fn div_floor(dividend: u64, divisor: u64) -> u64 {
-    dividend / divisor
+    /// Get the associated entry for a given disk offset.
+    ///
+    /// Returns both the entry that contains the offset, as well as the offset
+    /// within that entry.
+    pub fn offset_to_entry(&self, offset: u64) -> (&BatEntry, u64) {
+        let payload_block_index = offset / self.block_size;
+        let sector_bitmap_blocks = payload_block_index / self.chunk_ratio;
+        let bat_index = payload_block_index + sector_bitmap_blocks;
+        let entry = self.entries.get(bat_index as usize).unwrap();
+        let base_address = payload_block_index * self.block_size;
+        (entry, offset - base_address)
+    }
 }
 
 const fn div_ceil(dividend: u64, divisor: u64) -> u64 {

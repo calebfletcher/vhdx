@@ -328,6 +328,7 @@ impl Metadata {
 
 #[derive(Debug)]
 pub struct Vhdx {
+    file: File,
     header_section: HeaderSection,
     metadata_table: MetadataTable,
     metadata: Metadata,
@@ -368,10 +369,55 @@ impl Vhdx {
         let bat = bat::Bat::read(&mut file, &metadata);
 
         Vhdx {
+            file,
             header_section,
             metadata_table,
             metadata,
             bat,
         }
+    }
+
+    pub fn reader(self) -> Reader {
+        Reader {
+            disk: self,
+            offset: 0,
+        }
+    }
+}
+
+pub struct Reader {
+    disk: Vhdx,
+    offset: u64,
+}
+
+impl Read for Reader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // Read at most to the end of this block
+        let (entry, offset) = self.disk.bat.offset_to_entry(self.offset);
+        let block_size = self.disk.metadata.file_parameters.block_size() as usize;
+        let bytes_remaining_in_block = block_size as u64 - offset;
+        let num_to_read = buf.len().min(bytes_remaining_in_block as usize);
+        let dest_slice = &mut buf[..num_to_read];
+
+        self.offset += num_to_read as u64;
+
+        use bat::PayloadBatEntryState::*;
+        let num_actually_read = match entry.state() {
+            NotPresent | Undefined | Zero | Unmapped => {
+                // Return zeros
+                dest_slice.fill(0);
+                num_to_read
+            }
+            FullyPresent => {
+                // Read from file
+                self.disk
+                    .file
+                    .seek(SeekFrom::Start(entry.file_offset() + offset))?;
+                self.disk.file.read(dest_slice)?
+            }
+            PartiallyPresent => unimplemented!("differential disks"),
+        };
+
+        Ok(num_actually_read)
     }
 }
