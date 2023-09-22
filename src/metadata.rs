@@ -31,8 +31,8 @@ impl MetadataItem for FileParameters {
         file.read_exact(&mut buffer).unwrap();
 
         let block_size = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-        let leave_block_allocated = buffer[4] >> 7 & 1 == 1;
-        let has_parent = buffer[4] >> 6 & 1 == 1;
+        let leave_block_allocated = buffer[4] & 1 == 1;
+        let has_parent = buffer[4] >> 1 & 1 == 1;
 
         Self {
             block_size,

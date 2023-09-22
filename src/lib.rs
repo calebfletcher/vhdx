@@ -193,9 +193,9 @@ impl MetadataTableEntry {
         let item_id = Guid::from_bytes(buffer[0..16].try_into().unwrap());
         let offset = u32::from_le_bytes(buffer[16..20].try_into().unwrap());
         let length = u32::from_le_bytes(buffer[20..24].try_into().unwrap());
-        let is_user = buffer[24] >> 7 & 1 == 1;
-        let is_virtual_disk = buffer[24] >> 6 & 1 == 1;
-        let is_required = buffer[24] >> 5 & 1 == 1;
+        let is_user = buffer[24] & 1 == 1;
+        let is_virtual_disk = buffer[24] >> 1 & 1 == 1;
+        let is_required = buffer[24] >> 2 & 1 == 1;
 
         assert!(offset >= 64 * KB as u32);
         assert!(length <= MB as u32);
