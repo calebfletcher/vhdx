@@ -7,9 +7,12 @@ use std::{
     path::Path,
 };
 
+use metadata::MetadataItem;
+
 use crate::guid::Guid;
 
 mod guid;
+mod metadata;
 
 static FILE_SIGNATURE: &str = "vhdxfile";
 static HEADER_SIGNATURE: &str = "head";
@@ -237,6 +240,18 @@ impl MetadataTable {
 
         Self { signature, entries }
     }
+
+    fn get<T: MetadataItem>(&self, file: &mut File, offset: u64) -> Option<T> {
+        self.entries
+            .iter()
+            .find(|e| e.item_id == T::GUID)
+            .filter(|e| !e.is_empty)
+            .map(|e| {
+                file.seek(SeekFrom::Start(offset + e.offset as u64))
+                    .unwrap();
+                T::read(file)
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -270,10 +285,51 @@ impl HeaderSection {
     }
 }
 
+/// Metadata parsed based on the metadata table
+#[derive(Debug)]
+pub struct Metadata {
+    file_parameters: metadata::FileParameters,
+    virtual_disk_size: metadata::VirtualDiskSize,
+    virtual_disk_id: metadata::VirtualDiskId,
+    logical_sector_size: metadata::LogicalSectorSize,
+    physical_sector_size: metadata::PhysicalSectorSize,
+    parent_locator: Option<metadata::ParentLocator>,
+}
+impl Metadata {
+    fn from_table(file: &mut File, metadata_table: &MetadataTable, offset: u64) -> Self {
+        let file_parameters = metadata_table
+            .get::<metadata::FileParameters>(file, offset)
+            .unwrap();
+        let virtual_disk_size = metadata_table
+            .get::<metadata::VirtualDiskSize>(file, offset)
+            .unwrap();
+        let virtual_disk_id = metadata_table
+            .get::<metadata::VirtualDiskId>(file, offset)
+            .unwrap();
+        let logical_sector_size = metadata_table
+            .get::<metadata::LogicalSectorSize>(file, offset)
+            .unwrap();
+        let physical_sector_size = metadata_table
+            .get::<metadata::PhysicalSectorSize>(file, offset)
+            .unwrap();
+        let parent_locator = metadata_table.get::<metadata::ParentLocator>(file, offset);
+
+        Self {
+            file_parameters,
+            virtual_disk_size,
+            virtual_disk_id,
+            logical_sector_size,
+            physical_sector_size,
+            parent_locator,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Vhdx {
     header_section: HeaderSection,
     metadata_table: MetadataTable,
+    metadata: Metadata,
 }
 
 impl Vhdx {
@@ -293,10 +349,16 @@ impl Vhdx {
             .unwrap();
 
         let metadata_table = MetadataTable::read(&mut file);
+        let metadata = Metadata::from_table(
+            &mut file,
+            &metadata_table,
+            metadata_table_section.file_offset,
+        );
 
         Vhdx {
             header_section,
             metadata_table,
+            metadata,
         }
     }
 }
