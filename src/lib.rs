@@ -11,6 +11,7 @@ use metadata::MetadataItem;
 
 use crate::guid::Guid;
 
+mod bat;
 mod guid;
 mod metadata;
 
@@ -330,6 +331,7 @@ pub struct Vhdx {
     header_section: HeaderSection,
     metadata_table: MetadataTable,
     metadata: Metadata,
+    bat: bat::Bat,
 }
 
 impl Vhdx {
@@ -347,7 +349,6 @@ impl Vhdx {
 
         file.seek(SeekFrom::Start(metadata_table_section.file_offset))
             .unwrap();
-
         let metadata_table = MetadataTable::read(&mut file);
         let metadata = Metadata::from_table(
             &mut file,
@@ -355,10 +356,22 @@ impl Vhdx {
             metadata_table_section.file_offset,
         );
 
+        // Find the BAT table
+        let bat_table_section = header_section
+            .region_table_1
+            .entries
+            .iter()
+            .find(|entry| entry.guid == REGION_GUID_BAT)
+            .unwrap();
+        file.seek(SeekFrom::Start(bat_table_section.file_offset))
+            .unwrap();
+        let bat = bat::Bat::read(&mut file, &metadata);
+
         Vhdx {
             header_section,
             metadata_table,
             metadata,
+            bat,
         }
     }
 }

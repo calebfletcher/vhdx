@@ -17,6 +17,12 @@ pub struct FileParameters {
     has_parent: bool,
 }
 
+impl FileParameters {
+    pub fn block_size(&self) -> u32 {
+        self.block_size
+    }
+}
+
 impl MetadataItem for FileParameters {
     const GUID: Guid = Guid::from_str("CAA16737-FA36-4D43-B3B6-33F0AA44E76B");
 
@@ -41,6 +47,12 @@ pub struct VirtualDiskSize {
     virtual_disk_size: u64,
 }
 
+impl VirtualDiskSize {
+    pub fn virtual_disk_size(&self) -> u64 {
+        self.virtual_disk_size
+    }
+}
+
 impl MetadataItem for VirtualDiskSize {
     const GUID: Guid = Guid::from_str("2FA54224-CD1B-4876-B211-5DBED83BF4B8");
 
@@ -57,6 +69,12 @@ impl MetadataItem for VirtualDiskSize {
 #[derive(Debug)]
 pub struct VirtualDiskId {
     virtual_disk_id: Guid,
+}
+
+impl VirtualDiskId {
+    pub fn virtual_disk_id(&self) -> Guid {
+        self.virtual_disk_id
+    }
 }
 
 impl MetadataItem for VirtualDiskId {
@@ -77,6 +95,12 @@ pub struct LogicalSectorSize {
     logical_sector_size: u32,
 }
 
+impl LogicalSectorSize {
+    pub fn logical_sector_size(&self) -> u32 {
+        self.logical_sector_size
+    }
+}
+
 impl MetadataItem for LogicalSectorSize {
     const GUID: Guid = Guid::from_str("8141BF1D-A96F-4709-BA47-F233A8FAAB5F");
 
@@ -85,7 +109,6 @@ impl MetadataItem for LogicalSectorSize {
         file.read_exact(&mut buffer).unwrap();
 
         let logical_sector_size = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
-        dbg!(logical_sector_size);
         assert!([512, 4096].contains(&logical_sector_size));
 
         Self {
@@ -97,6 +120,12 @@ impl MetadataItem for LogicalSectorSize {
 #[derive(Debug)]
 pub struct PhysicalSectorSize {
     physical_sector_size: u32,
+}
+
+impl PhysicalSectorSize {
+    pub fn physical_sector_size(&self) -> u32 {
+        self.physical_sector_size
+    }
 }
 
 impl MetadataItem for PhysicalSectorSize {
