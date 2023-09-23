@@ -7,6 +7,8 @@ pub struct Guid {
 }
 
 impl Guid {
+    pub const ZERO: Guid = Guid::from_bytes([0; 16]);
+
     pub const fn new(data_1: u32, data_2: u16, data_3: u16, data_4: [u8; 8]) -> Self {
         Self {
             data_1,

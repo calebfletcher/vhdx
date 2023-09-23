@@ -93,6 +93,10 @@ impl Header {
         assert_eq!(log_length % MB as u32, 0);
         assert_eq!(log_offset % MB as u64, 0);
 
+        if log_guid != Guid::ZERO {
+            unimplemented!("log replay");
+        }
+
         Self {
             signature,
             checksum,
