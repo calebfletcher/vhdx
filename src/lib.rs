@@ -27,6 +27,8 @@ static REGION_GUID_METADATA: Guid = Guid::from_str("8B7CA206-4790-4B9A-B8FE-575F
 const KB: usize = 1024;
 const MB: usize = KB * KB;
 
+static ZEROS: [u8; 4 * KB] = [0; 4 * KB];
+
 #[derive(Debug)]
 struct FileTypeIdentifier {
     signature: String,
@@ -338,7 +340,7 @@ pub struct Vhdx {
 
 impl Vhdx {
     pub fn load(path: impl AsRef<Path>) -> Vhdx {
-        let mut file = std::fs::File::open(path).unwrap();
+        let mut file = File::options().read(true).write(true).open(path).unwrap();
         let header_section = HeaderSection::read(&mut file);
 
         // Find the metadata table
@@ -508,7 +510,56 @@ impl Vhdx {
         println!("replaying log");
         let sequence = self.find_log();
 
-        // TODO: replay the log
+        // Replay the log
+        for entry in sequence.iter() {
+            let mut data_sector_offset = 0;
+            for desc in entry.descriptors() {
+                match desc {
+                    log::Descriptor::Zero(desc) => {
+                        if desc.sequence_number() != entry.header().sequence_number {
+                            panic!("descriptor does not have the correct sequence number");
+                        }
+
+                        // TODO: Do we need to expand the file?
+                        let file_length = self.file.seek(SeekFrom::End(0)).unwrap();
+                        if desc.file_offset() >= file_length {
+                            panic!("zeros write start is greater than file length");
+                        }
+                        if desc.file_offset() + desc.zero_length() >= file_length {
+                            panic!("zeros write start is greater than file length");
+                        }
+
+                        self.file.seek(SeekFrom::Start(desc.file_offset())).unwrap();
+                        let num_sectors = desc.zero_length() / (4 * KB as u64);
+                        for _ in 0..num_sectors {
+                            self.file.write_all(&ZEROS).unwrap();
+                        }
+                    }
+                    log::Descriptor::Data(desc) => {
+                        if desc.sequence_number() != entry.header().sequence_number {
+                            panic!("descriptor does not have the correct sequence number");
+                        }
+
+                        let data_sector = &entry.data_sectors()[data_sector_offset];
+
+                        // TODO: Do we need to expand the file?
+                        let file_length = self.file.seek(SeekFrom::End(0)).unwrap();
+                        if desc.file_offset() >= file_length {
+                            panic!("data write start is greater than file length");
+                        }
+                        if desc.file_offset() + 4 * KB as u64 >= file_length {
+                            panic!("data write end is greater than file length");
+                        }
+                        self.file.seek(SeekFrom::Start(desc.file_offset())).unwrap();
+                        self.file.write_all(&desc.leading_bytes()).unwrap();
+                        self.file.write_all(data_sector.data()).unwrap();
+                        self.file.write_all(&desc.trailing_bytes()).unwrap();
+
+                        data_sector_offset += 1;
+                    }
+                }
+            }
+        }
     }
 
     fn debug_log_sectors(&mut self, log_offset: u64, log_length: u32) {
@@ -542,7 +593,9 @@ impl Vhdx {
 
 struct LogSequence {
     sequence_number: u64,
-    /// offset from the start of the log, not the file
+    /// Log entries in order from tail to head,
+    ///
+    /// The offset is from the start of the log, not the file
     entries: Vec<(u64, log::Entry)>,
 }
 
@@ -571,6 +624,11 @@ impl LogSequence {
 
     fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Iterate over the sequence in order from tail to head.
+    fn iter(&self) -> impl Iterator<Item = &log::Entry> {
+        self.entries.iter().map(|(_, entry)| entry)
     }
 }
 

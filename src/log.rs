@@ -100,14 +100,26 @@ impl ZeroDescriptor {
             sequence_number,
         }
     }
+
+    pub fn zero_length(&self) -> u64 {
+        self.zero_length
+    }
+
+    pub fn file_offset(&self) -> u64 {
+        self.file_offset
+    }
+
+    pub fn sequence_number(&self) -> u64 {
+        self.sequence_number
+    }
 }
 
 #[derive(Debug)]
 pub struct DataDescriptor {
     signature: String,
-    trailing_bytes: u32,
-    leading_bytes: u64,
-    pub file_offset: u64,
+    trailing_bytes: [u8; 4],
+    leading_bytes: [u8; 8],
+    file_offset: u64,
     sequence_number: u64,
 }
 
@@ -117,8 +129,8 @@ impl DataDescriptor {
         file.read_exact(&mut buffer).unwrap();
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
-        let trailing_bytes = u32::from_le_bytes(buffer[4..8].try_into().unwrap());
-        let leading_bytes = u64::from_le_bytes(buffer[8..16].try_into().unwrap());
+        let trailing_bytes = buffer[4..8].try_into().unwrap();
+        let leading_bytes = buffer[8..16].try_into().unwrap();
         let file_offset = u64::from_le_bytes(buffer[16..24].try_into().unwrap());
         let sequence_number = u64::from_le_bytes(buffer[24..32].try_into().unwrap());
 
@@ -132,6 +144,22 @@ impl DataDescriptor {
             file_offset,
             sequence_number,
         }
+    }
+
+    pub fn sequence_number(&self) -> u64 {
+        self.sequence_number
+    }
+
+    pub fn file_offset(&self) -> u64 {
+        self.file_offset
+    }
+
+    pub fn trailing_bytes(&self) -> [u8; 4] {
+        self.trailing_bytes
+    }
+
+    pub fn leading_bytes(&self) -> [u8; 8] {
+        self.leading_bytes
     }
 }
 
@@ -170,6 +198,18 @@ impl DataSector {
             data,
             sequence_low,
         }
+    }
+
+    pub fn data(&self) -> &[u8; 4084] {
+        self.data.as_ref()
+    }
+
+    pub fn sequence_high(&self) -> u32 {
+        self.sequence_high
+    }
+
+    pub fn sequence_low(&self) -> u32 {
+        self.sequence_low
     }
 }
 
@@ -254,6 +294,10 @@ impl Entry {
 
     pub fn descriptors(&self) -> &[Descriptor] {
         self.descriptors.as_ref()
+    }
+
+    pub fn data_sectors(&self) -> &[DataSector] {
+        self.data_sectors.as_ref()
     }
 }
 
