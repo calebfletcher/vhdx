@@ -8,3 +8,23 @@ An implementation of Microsoft's VHDX virtual hard disk format in Rust.
 
 Based on Microsoft's Open Specification available at:
 https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-vhdx
+
+## Usage
+```bash
+cargo add vhdx
+```
+```toml
+[dependencies]
+vhdx = "0.1"
+```
+
+## Example
+```rust,no_run
+use std::io::Read;
+
+let disk = vhdx::Vhdx::load("disk.vhdx");
+let mut reader = disk.reader();
+
+let mut buffer = [0; 512];
+reader.read(&mut buffer).unwrap();
+```

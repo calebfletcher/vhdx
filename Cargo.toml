@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Caleb Fletcher <caleb@fletcher.cf>"]
 description = "An implementation of Microsoft's VHDX virtual hard disk format."
 repository = "https://github.com/calebfletcher/vhdx/"
+homepage = "https://github.com/calebfletcher/vhdx/"
 license = "MIT OR Apache-2.0"
 keywords = ["vhdx", "disk", "microsoft"]
 categories = ["encoding", "filesystem", "parser-implementations"]
@@ -14,3 +15,6 @@ categories = ["encoding", "filesystem", "parser-implementations"]
 
 [dev-dependencies]
 gpt = "3.1.0"
+
+[package.metadata.docs.rs]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
