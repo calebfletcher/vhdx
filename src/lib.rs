@@ -639,7 +639,8 @@ impl LogSequence {
     }
 }
 
-///
+/// A higher-level abstraction to a VHDX disk that implements [`std::io::Read`]
+/// and [`std::io::Seek`].
 #[derive(Debug)]
 pub struct Reader<'a> {
     disk: &'a mut Vhdx,
