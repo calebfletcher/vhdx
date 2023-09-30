@@ -2,7 +2,13 @@
 name = "vhdx"
 version = "0.1.0"
 edition = "2021"
+authors = ["Caleb Fletcher <caleb@fletcher.cf>"]
+description = "An implementation of Microsoft's VHDX virtual hard disk format."
+repository = "https://github.com/calebfletcher/vhdx/"
 license = "MIT OR Apache-2.0"
+keywords = ["vhdx", "disk", "microsoft"]
+categories = ["encoding", "filesystem", "parser-implementations"]
+
 
 [dependencies]
 
