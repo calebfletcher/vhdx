@@ -13,6 +13,7 @@ use crate::guid::Guid;
 
 mod bat;
 mod guid;
+mod log;
 mod metadata;
 
 static FILE_SIGNATURE: &str = "vhdxfile";
@@ -92,10 +93,6 @@ impl Header {
         assert_eq!(version, 1);
         assert_eq!(log_length % MB as u32, 0);
         assert_eq!(log_offset % MB as u64, 0);
-
-        if log_guid != Guid::ZERO {
-            unimplemented!("log replay");
-        }
 
         Self {
             signature,
@@ -372,13 +369,16 @@ impl Vhdx {
             .unwrap();
         let bat = bat::Bat::read(&mut file, &metadata);
 
-        Vhdx {
+        let mut disk = Vhdx {
             file,
             header_section,
             metadata_table,
             metadata,
             bat,
-        }
+        };
+        disk.try_replay_log();
+
+        disk
     }
 
     pub fn reader(self) -> Reader {
@@ -386,6 +386,190 @@ impl Vhdx {
             disk: self,
             offset: 0,
         }
+    }
+
+    /// Find the active sequence of the log.
+    ///
+    /// This function does not care if the log is empty or has no valid entries,
+    /// and may not return valid entries if it is called in this state.
+    fn find_log(&mut self) -> LogSequence {
+        let current_header = self.current_header();
+        let log_offset = current_header.log_offset;
+        let log_length = current_header.log_length;
+        println!("log length {} at offset 0x{:X}", log_length, log_offset);
+
+        // From 2.3.3 Log Replay
+        // Tail is earlier on in the file, head is later
+        // Tail is oldest (lowest sequence number)
+
+        // Step 1
+        let mut candidate = LogSequence {
+            sequence_number: 0,
+            entries: Vec::new(),
+        };
+        let mut current_tail = log_offset;
+        let mut old_tail = log_offset;
+
+        loop {
+            // Step 2
+            let mut current = LogSequence {
+                sequence_number: 0,
+                entries: Vec::new(),
+            };
+            let mut head_value = current_tail;
+            self.file.seek(SeekFrom::Start(current_tail)).unwrap();
+
+            // Step 3
+            loop {
+                let entry_offset = self.file.stream_position().unwrap();
+                //println!("Attempting to read entry at offset {}", entry_offset);
+                if let Ok(entry) = log::Entry::read(&mut self.file) {
+                    // println!(
+                    //     "Found entry with sequence number {}",
+                    //     entry.header().sequence_number
+                    // );
+                    if current.is_empty() {
+                        // Extend the current sequence to include the log entry
+                        current.sequence_number = entry.header().sequence_number;
+                        current.entries.push((entry_offset - log_offset, entry));
+                        head_value = entry_offset;
+                    } else if entry.header().sequence_number
+                        == current.head().unwrap().header().sequence_number + 1
+                    {
+                        // Extend the current sequence to include the log entry
+                        current.entries.push((entry_offset - log_offset, entry));
+                        head_value = entry_offset;
+                    }
+                } else {
+                    // Not a valid entry, stop searching
+                    break;
+                }
+            }
+
+            // Step 4
+            let is_current_sequence_valid = current.is_valid();
+
+            // Step 5
+            let is_current_sequence_empty = current.is_empty();
+            if is_current_sequence_valid && current.sequence_number > candidate.sequence_number {
+                candidate = current;
+                //println!("new candidate sequence: {}", candidate.sequence_number);
+            }
+
+            // Step 6
+            if is_current_sequence_empty || !is_current_sequence_valid {
+                // Step forward one sector if we didn't have a valid sequence
+                current_tail += 4 * KB as u64;
+                if current_tail >= log_offset + log_length as u64 {
+                    current_tail -= log_length as u64;
+                }
+            } else {
+                // Sequence is valid and non-empty, skip to the end
+                current_tail = head_value;
+            }
+
+            // Step 7
+            if current_tail < old_tail {
+                // Stop
+                break;
+            }
+            old_tail = current_tail;
+        }
+
+        if candidate.is_empty() {
+            panic!("no valid log sequences, file is corrupt");
+        }
+
+        // Check if the file has been truncated since the log was written
+        let file_size = self.file.seek(SeekFrom::End(0)).unwrap();
+        if file_size < candidate.head().unwrap().header().flushed_file_offset {
+            panic!("file has been truncated, cannot open");
+        }
+
+        let active_sequence = candidate;
+        println!(
+            "Found active sequence with {} entries ({} -> {})",
+            active_sequence.entries.len(),
+            active_sequence.tail().unwrap().header().sequence_number,
+            active_sequence.head().unwrap().header().sequence_number,
+        );
+
+        active_sequence
+    }
+
+    fn try_replay_log(&mut self) {
+        // Check if we should replay the log
+        let current_header = self.current_header();
+        if current_header.log_guid == Guid::ZERO {
+            return;
+        }
+
+        println!("replaying log");
+        let sequence = self.find_log();
+
+        // TODO: replay the log
+    }
+
+    fn debug_log_sectors(&mut self, log_offset: u64, log_length: u32) {
+        let mut entry_offset = log_offset;
+        let stride = 4 * KB as u64;
+        while entry_offset - log_offset < log_length as u64 {
+            self.file.seek(SeekFrom::Start(entry_offset)).unwrap();
+            let mut buffer = vec![0; 64];
+            self.file.read_exact(&mut buffer).unwrap();
+            let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+            if !buffer.iter().all(|c| *c == 0) {
+                println!(
+                    "Entry {}: '{}' (offset {})",
+                    (entry_offset - log_offset) / stride,
+                    signature,
+                    entry_offset,
+                );
+            }
+            entry_offset += stride;
+        }
+    }
+
+    fn current_header(&self) -> &Header {
+        std::cmp::max_by_key(
+            &self.header_section.header_1,
+            &self.header_section.header_2,
+            |header| header.sequence_number,
+        )
+    }
+}
+
+struct LogSequence {
+    sequence_number: u64,
+    /// offset from the start of the log, not the file
+    entries: Vec<(u64, log::Entry)>,
+}
+
+impl LogSequence {
+    fn tail(&self) -> Option<&log::Entry> {
+        self.entries.first().map(|(_, entry)| entry)
+    }
+
+    fn head(&self) -> Option<&log::Entry> {
+        self.entries.last().map(|(_, entry)| entry)
+    }
+
+    /// A sequence is valid if it is both non-empty and that the head entry's tail
+    /// is also part of the sequence.
+    ///
+    /// Note that this function does not check for consecutive sequence numbers
+    fn is_valid(&self) -> bool {
+        let Some(head) = self.head() else {
+            return false;
+        };
+        let current_sequence_head_entry_tail = head.header().tail as u64;
+        self.entries
+            .iter()
+            .any(|(offset, _)| *offset == current_sequence_head_entry_tail)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 
