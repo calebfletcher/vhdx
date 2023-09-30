@@ -1,5 +1,5 @@
 fn main() {
-    let disk = vhdx::Vhdx::load(std::env::args_os().nth(1).unwrap());
+    let mut disk = vhdx::Vhdx::load(std::env::args_os().nth(1).unwrap());
     let mut reader = disk.reader();
 
     let cfg = gpt::GptConfig::new().writable(false);

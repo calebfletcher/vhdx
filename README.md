@@ -22,7 +22,7 @@ vhdx = "0.1"
 ```rust,no_run
 use std::io::Read;
 
-let disk = vhdx::Vhdx::load("disk.vhdx");
+let mut disk = vhdx::Vhdx::load("disk.vhdx");
 let mut reader = disk.reader();
 
 let mut buffer = [0; 512];

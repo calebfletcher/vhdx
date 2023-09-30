@@ -61,7 +61,7 @@ pub struct Bat {
 }
 
 impl Bat {
-    pub fn read(file: &mut File, metadata: &crate::Metadata) -> Self {
+    pub(crate) fn read(file: &mut File, metadata: &crate::Metadata) -> Self {
         let virt_disk_size = metadata.virtual_disk_size.virtual_disk_size();
         let logical_sector_size = metadata.logical_sector_size.logical_sector_size();
         let block_size = metadata.file_parameters.block_size() as u64;
