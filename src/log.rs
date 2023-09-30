@@ -59,6 +59,10 @@ impl LogEntryHeader {
             last_file_offset,
         })
     }
+
+    pub fn log_guid(&self) -> Guid {
+        self.log_guid
+    }
 }
 
 #[derive(Debug)]

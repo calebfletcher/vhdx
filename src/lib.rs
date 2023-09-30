@@ -394,6 +394,7 @@ impl Vhdx {
     /// and may not return valid entries if it is called in this state.
     fn find_log(&mut self) -> LogSequence {
         let current_header = self.current_header();
+        let log_guid = current_header.log_guid;
         let log_offset = current_header.log_offset;
         let log_length = current_header.log_length;
         println!("log length {} at offset 0x{:X}", log_length, log_offset);
@@ -424,10 +425,10 @@ impl Vhdx {
                 let entry_offset = self.file.stream_position().unwrap();
                 //println!("Attempting to read entry at offset {}", entry_offset);
                 if let Ok(entry) = log::Entry::read(&mut self.file) {
-                    // println!(
-                    //     "Found entry with sequence number {}",
-                    //     entry.header().sequence_number
-                    // );
+                    // Check if the entry matches the guid in the file header
+                    if entry.header().log_guid() != log_guid {
+                        break;
+                    }
                     if current.is_empty() {
                         // Extend the current sequence to include the log entry
                         current.sequence_number = entry.header().sequence_number;
