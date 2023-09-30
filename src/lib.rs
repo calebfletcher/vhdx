@@ -292,7 +292,7 @@ impl HeaderSection {
 
 /// Metadata parsed based on the metadata table
 #[derive(Debug)]
-pub struct Metadata {
+struct Metadata {
     file_parameters: metadata::FileParameters,
     virtual_disk_size: metadata::VirtualDiskSize,
     virtual_disk_id: metadata::VirtualDiskId,
@@ -330,6 +330,7 @@ impl Metadata {
     }
 }
 
+/// A VHDX file with all metadata loaded in-memory.
 #[derive(Debug)]
 pub struct Vhdx {
     file: File,
@@ -340,6 +341,10 @@ pub struct Vhdx {
 }
 
 impl Vhdx {
+    /// Load a VHDX file from the filesystem.
+    ///
+    /// Through opening the file, if there is a log to be replayed it will be
+    /// applied during this function.
     pub fn load(path: impl AsRef<Path>) -> Vhdx {
         let mut file = File::options().read(true).write(true).open(path).unwrap();
         let header_section = HeaderSection::read(&mut file);
@@ -384,7 +389,8 @@ impl Vhdx {
         disk
     }
 
-    pub fn reader(self) -> Reader {
+    /// Use the disk as a [`Reader`] that implements [`std::io::Read`] and [`std::io::Seek`].
+    pub fn reader(&mut self) -> Reader {
         Reader {
             disk: self,
             offset: 0,
@@ -633,13 +639,14 @@ impl LogSequence {
     }
 }
 
+///
 #[derive(Debug)]
-pub struct Reader {
-    disk: Vhdx,
+pub struct Reader<'a> {
+    disk: &'a mut Vhdx,
     offset: u64,
 }
 
-impl Read for Reader {
+impl Read for Reader<'_> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // Read at most to the end of this block
         let (entry, offset) = self.disk.bat.offset_to_entry(self.offset);
@@ -671,7 +678,7 @@ impl Read for Reader {
     }
 }
 
-impl Seek for Reader {
+impl Seek for Reader<'_> {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         match pos {
             SeekFrom::Start(offset) => self.offset = offset,
@@ -692,7 +699,7 @@ impl Seek for Reader {
     }
 }
 
-impl Write for Reader {
+impl Write for Reader<'_> {
     fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
         unimplemented!()
     }
