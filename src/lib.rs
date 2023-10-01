@@ -88,17 +88,17 @@ impl Header {
         file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
-        let checksum = buffer[4..8].try_into().unwrap();
-        let sequence_number = u64::from_le_bytes(buffer[8..16].try_into().unwrap());
+        let checksum = buffer[4..8].try_into().expect("infallible");
+        let sequence_number = u64::from_le_bytes(buffer[8..16].try_into().expect("infallible"));
 
-        let file_write_guid = Guid::from_bytes(buffer[16..32].try_into().unwrap());
-        let data_write_guid = Guid::from_bytes(buffer[32..48].try_into().unwrap());
-        let log_guid = Guid::from_bytes(buffer[48..64].try_into().unwrap());
+        let file_write_guid = Guid::from_bytes(buffer[16..32].try_into().expect("infallible"));
+        let data_write_guid = Guid::from_bytes(buffer[32..48].try_into().expect("infallible"));
+        let log_guid = Guid::from_bytes(buffer[48..64].try_into().expect("infallible"));
 
-        let log_version = u16::from_le_bytes(buffer[64..66].try_into().unwrap());
-        let version = u16::from_le_bytes(buffer[66..68].try_into().unwrap());
-        let log_length = u32::from_le_bytes(buffer[68..72].try_into().unwrap());
-        let log_offset = u64::from_le_bytes(buffer[72..80].try_into().unwrap());
+        let log_version = u16::from_le_bytes(buffer[64..66].try_into().expect("infallible"));
+        let version = u16::from_le_bytes(buffer[66..68].try_into().expect("infallible"));
+        let log_length = u32::from_le_bytes(buffer[68..72].try_into().expect("infallible"));
+        let log_offset = u64::from_le_bytes(buffer[72..80].try_into().expect("infallible"));
 
         assert_eq!(signature, HEADER_SIGNATURE);
         assert_eq!(log_version, 0);
@@ -134,10 +134,10 @@ impl RegionTableEntry {
         let mut buffer = vec![0; 32];
         file.read_exact(&mut buffer)?;
 
-        let guid = Guid::from_bytes(buffer[0..16].try_into().unwrap());
-        let file_offset = u64::from_le_bytes(buffer[16..24].try_into().unwrap());
-        let length = u32::from_le_bytes(buffer[24..28].try_into().unwrap());
-        let required = u32::from_le_bytes(buffer[28..32].try_into().unwrap());
+        let guid = Guid::from_bytes(buffer[0..16].try_into().expect("infallible"));
+        let file_offset = u64::from_le_bytes(buffer[16..24].try_into().expect("infallible"));
+        let length = u32::from_le_bytes(buffer[24..28].try_into().expect("infallible"));
+        let required = u32::from_le_bytes(buffer[28..32].try_into().expect("infallible"));
 
         assert_eq!(file_offset % MB as u64, 0);
         assert!(file_offset > MB as u64);
@@ -168,8 +168,8 @@ impl RegionTable {
         file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
-        let checksum = buffer[4..8].try_into().unwrap();
-        let entry_count = u32::from_le_bytes(buffer[8..12].try_into().unwrap());
+        let checksum = buffer[4..8].try_into().expect("infallible");
+        let entry_count = u32::from_le_bytes(buffer[8..12].try_into().expect("infallible"));
 
         assert_eq!(signature, REGION_TABLE_SIGNATURE);
         assert!(entry_count <= 2047);
@@ -203,9 +203,9 @@ impl MetadataTableEntry {
         let mut buffer = vec![0; 32];
         file.read_exact(&mut buffer)?;
 
-        let item_id = Guid::from_bytes(buffer[0..16].try_into().unwrap());
-        let offset = u32::from_le_bytes(buffer[16..20].try_into().unwrap());
-        let length = u32::from_le_bytes(buffer[20..24].try_into().unwrap());
+        let item_id = Guid::from_bytes(buffer[0..16].try_into().expect("infallible"));
+        let offset = u32::from_le_bytes(buffer[16..20].try_into().expect("infallible"));
+        let length = u32::from_le_bytes(buffer[20..24].try_into().expect("infallible"));
         let is_user = buffer[24] & 1 == 1;
         let is_virtual_disk = buffer[24] >> 1 & 1 == 1;
         let is_required = buffer[24] >> 2 & 1 == 1;
@@ -242,7 +242,7 @@ impl MetadataTable {
         file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..8].to_vec()).unwrap();
-        let entry_count = u16::from_le_bytes(buffer[10..12].try_into().unwrap());
+        let entry_count = u16::from_le_bytes(buffer[10..12].try_into().expect("infallible"));
 
         assert_eq!(signature, METADATA_TABLE_SIGNATURE);
         assert!(entry_count <= 2047);

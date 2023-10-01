@@ -32,7 +32,7 @@ impl MetadataItem for FileParameters {
         let mut buffer = vec![0; 8];
         file.read_exact(&mut buffer)?;
 
-        let block_size = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+        let block_size = u32::from_le_bytes(buffer[0..4].try_into().expect("infallible"));
         let leave_block_allocated = buffer[4] & 1 == 1;
         let has_parent = buffer[4] >> 1 & 1 == 1;
 
@@ -62,7 +62,7 @@ impl MetadataItem for VirtualDiskSize {
         let mut buffer = vec![0; 8];
         file.read_exact(&mut buffer)?;
 
-        let virtual_disk_size = u64::from_le_bytes(buffer[0..8].try_into().unwrap());
+        let virtual_disk_size = u64::from_le_bytes(buffer[0..8].try_into().expect("infallible"));
 
         Ok(Self { virtual_disk_size })
     }
@@ -86,7 +86,7 @@ impl MetadataItem for VirtualDiskId {
         let mut buffer = vec![0; 16];
         file.read_exact(&mut buffer)?;
 
-        let virtual_disk_id = Guid::from_bytes(buffer[0..16].try_into().unwrap());
+        let virtual_disk_id = Guid::from_bytes(buffer[0..16].try_into().expect("infallible"));
 
         Ok(Self { virtual_disk_id })
     }
@@ -110,7 +110,7 @@ impl MetadataItem for LogicalSectorSize {
         let mut buffer = vec![0; 4];
         file.read_exact(&mut buffer)?;
 
-        let logical_sector_size = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+        let logical_sector_size = u32::from_le_bytes(buffer[0..4].try_into().expect("infallible"));
         assert!([512, 4096].contains(&logical_sector_size));
 
         Ok(Self {
@@ -137,7 +137,7 @@ impl MetadataItem for PhysicalSectorSize {
         let mut buffer = vec![0; 4];
         file.read_exact(&mut buffer)?;
 
-        let physical_sector_size = u32::from_le_bytes(buffer[0..4].try_into().unwrap());
+        let physical_sector_size = u32::from_le_bytes(buffer[0..4].try_into().expect("infallible"));
         assert!([512, 4096].contains(&physical_sector_size));
 
         Ok(Self {
@@ -159,8 +159,8 @@ impl MetadataItem for ParentLocator {
         let mut buffer = vec![0; 20];
         file.read_exact(&mut buffer)?;
 
-        let locator_type = Guid::from_bytes(buffer[0..16].try_into().unwrap());
-        let key_value_count = u16::from_le_bytes(buffer[18..20].try_into().unwrap());
+        let locator_type = Guid::from_bytes(buffer[0..16].try_into().expect("infallible"));
+        let key_value_count = u16::from_le_bytes(buffer[18..20].try_into().expect("infallible"));
         // TODO: Read the key-value data to find the parent
 
         assert_eq!(locator_type, PARENT_LOCATOR_TYPE);

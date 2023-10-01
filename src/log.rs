@@ -29,14 +29,15 @@ impl LogEntryHeader {
         file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
-        let checksum = buffer[4..8].try_into().unwrap();
-        let entry_length = u32::from_le_bytes(buffer[8..12].try_into().unwrap());
-        let tail = u32::from_le_bytes(buffer[12..16].try_into().unwrap());
-        let sequence_number = u64::from_le_bytes(buffer[16..24].try_into().unwrap());
-        let descriptor_count = u32::from_le_bytes(buffer[24..28].try_into().unwrap());
-        let log_guid = Guid::from_bytes(buffer[32..48].try_into().unwrap());
-        let flushed_file_offset = u64::from_le_bytes(buffer[48..56].try_into().unwrap());
-        let last_file_offset = u64::from_le_bytes(buffer[56..64].try_into().unwrap());
+        let checksum = buffer[4..8].try_into().expect("infallible");
+        let entry_length = u32::from_le_bytes(buffer[8..12].try_into().expect("infallible"));
+        let tail = u32::from_le_bytes(buffer[12..16].try_into().expect("infallible"));
+        let sequence_number = u64::from_le_bytes(buffer[16..24].try_into().expect("infallible"));
+        let descriptor_count = u32::from_le_bytes(buffer[24..28].try_into().expect("infallible"));
+        let log_guid = Guid::from_bytes(buffer[32..48].try_into().expect("infallible"));
+        let flushed_file_offset =
+            u64::from_le_bytes(buffer[48..56].try_into().expect("infallible"));
+        let last_file_offset = u64::from_le_bytes(buffer[56..64].try_into().expect("infallible"));
 
         if signature != LOG_ENTRY_SIGNATURE {
             return Err(Error::InvalidSignature);
@@ -85,9 +86,9 @@ impl ZeroDescriptor {
         file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
-        let zero_length = u64::from_le_bytes(buffer[8..16].try_into().unwrap());
-        let file_offset = u64::from_le_bytes(buffer[16..24].try_into().unwrap());
-        let sequence_number = u64::from_le_bytes(buffer[24..32].try_into().unwrap());
+        let zero_length = u64::from_le_bytes(buffer[8..16].try_into().expect("infallible"));
+        let file_offset = u64::from_le_bytes(buffer[16..24].try_into().expect("infallible"));
+        let sequence_number = u64::from_le_bytes(buffer[24..32].try_into().expect("infallible"));
 
         assert_eq!(signature, ZERO_DESCRIPTOR_SIGNATURE);
         assert_eq!(zero_length % (4 * KB as u64), 0);
@@ -129,10 +130,10 @@ impl DataDescriptor {
         file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
-        let trailing_bytes = buffer[4..8].try_into().unwrap();
-        let leading_bytes = buffer[8..16].try_into().unwrap();
-        let file_offset = u64::from_le_bytes(buffer[16..24].try_into().unwrap());
-        let sequence_number = u64::from_le_bytes(buffer[24..32].try_into().unwrap());
+        let trailing_bytes = buffer[4..8].try_into().expect("infallible");
+        let leading_bytes = buffer[8..16].try_into().expect("infallible");
+        let file_offset = u64::from_le_bytes(buffer[16..24].try_into().expect("infallible"));
+        let sequence_number = u64::from_le_bytes(buffer[24..32].try_into().expect("infallible"));
 
         assert_eq!(signature, DATA_DESCRIPTOR_SIGNATURE);
         assert_eq!(file_offset % (4 * KB as u64), 0);
@@ -186,9 +187,11 @@ impl DataSector {
         file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
-        let sequence_high = u32::from_le_bytes(buffer[4..8].try_into().unwrap());
-        let data = Box::<[u8]>::from(&buffer[8..4092]).try_into().unwrap();
-        let sequence_low = u32::from_le_bytes(buffer[4092..4096].try_into().unwrap());
+        let sequence_high = u32::from_le_bytes(buffer[4..8].try_into().expect("infallible"));
+        let data = Box::<[u8]>::from(&buffer[8..4092])
+            .try_into()
+            .expect("infallible");
+        let sequence_low = u32::from_le_bytes(buffer[4092..4096].try_into().expect("infallible"));
 
         assert_eq!(signature, DATA_SECTOR_SIGNATURE);
 
