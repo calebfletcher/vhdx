@@ -45,6 +45,8 @@ pub enum Error {
     InvalidUtf16(#[from] DecodeUtf16Error),
     #[error("missing required metadata: {0}")]
     MissingRequiredMetadata(&'static str),
+    #[error("missing required region: {0}")]
+    MissingRequiredRegion(&'static str),
 }
 
 impl From<std::string::FromUtf8Error> for Error {
@@ -374,13 +376,14 @@ impl Vhdx {
         let mut file = File::options().read(true).write(true).open(path)?;
         let header_section = HeaderSection::read(&mut file)?;
 
+        // TODO: how do we choose between region table 1 and region table 2?
         // Find the metadata table
         let metadata_table_section = header_section
             .region_table_1
             .entries
             .iter()
             .find(|entry| entry.guid == REGION_GUID_METADATA)
-            .unwrap();
+            .ok_or(Error::MissingRequiredRegion("metadata"))?;
 
         file.seek(SeekFrom::Start(metadata_table_section.file_offset))?;
         let metadata_table = MetadataTable::read(&mut file)?;
@@ -396,7 +399,7 @@ impl Vhdx {
             .entries
             .iter()
             .find(|entry| entry.guid == REGION_GUID_BAT)
-            .unwrap();
+            .ok_or(Error::MissingRequiredRegion("bat"))?;
         file.seek(SeekFrom::Start(bat_table_section.file_offset))?;
         let bat = bat::Bat::read(&mut file, &metadata)?;
 
