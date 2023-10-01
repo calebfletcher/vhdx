@@ -3,7 +3,7 @@
 [![Rust Documentation](https://docs.rs/vhdx/badge.svg)](https://docs.rs/vhdx)
 [![Actions Status](https://github.com/calebfletcher/vhdx/workflows/ci/badge.svg)](https://github.com/calebfletcher/vhdx/actions)
 [![Unsafe Forbidden](https://img.shields.io/badge/unsafe-forbidden-brightgreen.svg)](https://img.shields.io/badge/unsafe-forbidden-brightgreen.svg)
-[![no_std](https://img.shields.io/badge/no__std-yes-blue)
+[![no_std](https://img.shields.io/badge/no__std-yes-blue)](https://img.shields.io/badge/no__std-yes-blue)
 
 An implementation of Microsoft's VHDX virtual hard disk format in Rust.
 
