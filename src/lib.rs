@@ -43,6 +43,8 @@ pub enum Error {
     InvalidUtf8(#[from] Utf8Error),
     #[error("invalid UTF-16: {0}")]
     InvalidUtf16(#[from] DecodeUtf16Error),
+    #[error("missing required metadata: {0}")]
+    MissingRequiredMetadata(&'static str),
 }
 
 impl From<std::string::FromUtf8Error> for Error {
@@ -327,19 +329,19 @@ impl Metadata {
     ) -> Result<Self, Error> {
         let file_parameters = metadata_table
             .get::<metadata::FileParameters>(file, offset)?
-            .unwrap();
+            .ok_or(Error::MissingRequiredMetadata("file parameters"))?;
         let virtual_disk_size = metadata_table
             .get::<metadata::VirtualDiskSize>(file, offset)?
-            .unwrap();
+            .ok_or(Error::MissingRequiredMetadata("virtual disk size"))?;
         let virtual_disk_id = metadata_table
             .get::<metadata::VirtualDiskId>(file, offset)?
-            .unwrap();
+            .ok_or(Error::MissingRequiredMetadata("virtual disk id"))?;
         let logical_sector_size = metadata_table
             .get::<metadata::LogicalSectorSize>(file, offset)?
-            .unwrap();
+            .ok_or(Error::MissingRequiredMetadata("logical sector size"))?;
         let physical_sector_size = metadata_table
             .get::<metadata::PhysicalSectorSize>(file, offset)?
-            .unwrap();
+            .ok_or(Error::MissingRequiredMetadata("physical sector size"))?;
         let parent_locator = metadata_table.get::<metadata::ParentLocator>(file, offset)?;
 
         Ok(Self {
