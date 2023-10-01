@@ -465,7 +465,12 @@ impl Vhdx {
                             current.entries.push((entry_offset - log_offset, entry));
                             head_value = entry_offset;
                         } else if entry.header().sequence_number
-                            == current.head().unwrap().header().sequence_number + 1
+                            == current
+                                .head()
+                                .expect("current sequence is not empty")
+                                .header()
+                                .sequence_number
+                                + 1
                         {
                             // Extend the current sequence to include the log entry
                             current.entries.push((entry_offset - log_offset, entry));
@@ -519,7 +524,13 @@ impl Vhdx {
 
         // Check if the file has been truncated since the log was written
         let file_size = self.file.seek(SeekFrom::End(0))?;
-        if file_size < candidate.head().unwrap().header().flushed_file_offset {
+        if file_size
+            < candidate
+                .head()
+                .expect("candidate is not empty")
+                .header()
+                .flushed_file_offset
+        {
             panic!("file has been truncated, cannot open");
         }
 
@@ -527,8 +538,16 @@ impl Vhdx {
         println!(
             "Found active sequence with {} entries ({} -> {})",
             active_sequence.entries.len(),
-            active_sequence.tail().unwrap().header().sequence_number,
-            active_sequence.head().unwrap().header().sequence_number,
+            active_sequence
+                .tail()
+                .expect("active sequence is not empty")
+                .header()
+                .sequence_number,
+            active_sequence
+                .head()
+                .expect("active sequence is not empty")
+                .header()
+                .sequence_number,
         );
 
         Ok(active_sequence)
