@@ -7,6 +7,7 @@ use std::{
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
 };
+use thiserror::Error;
 
 use metadata::MetadataItem;
 
@@ -30,6 +31,14 @@ const MB: usize = KB * KB;
 
 static ZEROS: [u8; 4 * KB] = [0; 4 * KB];
 
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("invalid signature")]
+    InvalidSignature,
+}
+
 #[derive(Debug)]
 struct FileTypeIdentifier {
     signature: String,
@@ -39,9 +48,9 @@ struct FileTypeIdentifier {
 impl FileTypeIdentifier {
     /// Read a file type identifier from the current position in the file,
     /// advancing the file to beyond the file type identifier.
-    fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; KB];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
         let signature = String::from_utf8_lossy(&buffer[..8]).into_owned();
         assert_eq!(signature, FILE_SIGNATURE);
 
@@ -53,7 +62,7 @@ impl FileTypeIdentifier {
             .collect::<Result<String, _>>()
             .unwrap();
 
-        Self { signature, creator }
+        Ok(Self { signature, creator })
     }
 }
 
@@ -74,9 +83,9 @@ struct Header {
 impl Header {
     /// Read a header from the current position in the file, advancing the
     /// file to beyond the header.
-    fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 128];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
         let checksum = buffer[4..8].try_into().unwrap();
@@ -97,7 +106,7 @@ impl Header {
         assert_eq!(log_length % MB as u32, 0);
         assert_eq!(log_offset % MB as u64, 0);
 
-        Self {
+        Ok(Self {
             signature,
             checksum,
             sequence_number,
@@ -108,7 +117,7 @@ impl Header {
             version,
             log_length,
             log_offset,
-        }
+        })
     }
 }
 
@@ -121,9 +130,9 @@ struct RegionTableEntry {
 }
 
 impl RegionTableEntry {
-    fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 32];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let guid = Guid::from_bytes(buffer[0..16].try_into().unwrap());
         let file_offset = u64::from_le_bytes(buffer[16..24].try_into().unwrap());
@@ -135,12 +144,12 @@ impl RegionTableEntry {
         assert_eq!(length % MB as u32, 0);
         assert!(required == 0 || [REGION_GUID_BAT, REGION_GUID_METADATA].contains(&guid));
 
-        Self {
+        Ok(Self {
             guid,
             file_offset,
             length,
             required,
-        }
+        })
     }
 }
 
@@ -154,9 +163,9 @@ struct RegionTable {
 impl RegionTable {
     /// Read a region table from the current position in the file, advancing
     /// the file to beyond the region table.
-    fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 16];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
         let checksum = buffer[4..8].try_into().unwrap();
@@ -167,14 +176,14 @@ impl RegionTable {
 
         let mut entries = Vec::with_capacity(entry_count as usize);
         for _ in 0..entry_count {
-            entries.push(RegionTableEntry::read(file));
+            entries.push(RegionTableEntry::read(file)?);
         }
 
-        Self {
+        Ok(Self {
             signature,
             checksum,
             entries,
-        }
+        })
     }
 }
 
@@ -190,9 +199,9 @@ struct MetadataTableEntry {
 }
 
 impl MetadataTableEntry {
-    fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 32];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let item_id = Guid::from_bytes(buffer[0..16].try_into().unwrap());
         let offset = u32::from_le_bytes(buffer[16..20].try_into().unwrap());
@@ -209,7 +218,7 @@ impl MetadataTableEntry {
         }
         let is_empty = length == 0;
 
-        Self {
+        Ok(Self {
             item_id,
             offset,
             length,
@@ -217,7 +226,7 @@ impl MetadataTableEntry {
             is_virtual_disk,
             is_required,
             is_empty,
-        }
+        })
     }
 }
 
@@ -228,9 +237,9 @@ struct MetadataTable {
 }
 
 impl MetadataTable {
-    fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 32];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..8].to_vec()).unwrap();
         let entry_count = u16::from_le_bytes(buffer[10..12].try_into().unwrap());
@@ -240,22 +249,22 @@ impl MetadataTable {
 
         let mut entries = Vec::with_capacity(entry_count as usize);
         for _ in 0..entry_count {
-            entries.push(MetadataTableEntry::read(file));
+            entries.push(MetadataTableEntry::read(file)?);
         }
 
-        Self { signature, entries }
+        Ok(Self { signature, entries })
     }
 
-    fn get<T: MetadataItem>(&self, file: &mut File, offset: u64) -> Option<T> {
+    fn get<T: MetadataItem>(&self, file: &mut File, offset: u64) -> Result<Option<T>, Error> {
         self.entries
             .iter()
             .find(|e| e.item_id == T::GUID)
             .filter(|e| !e.is_empty)
             .map(|e| {
-                file.seek(SeekFrom::Start(offset + e.offset as u64))
-                    .unwrap();
+                file.seek(SeekFrom::Start(offset + e.offset as u64))?;
                 T::read(file)
             })
+            .transpose()
     }
 }
 
@@ -269,24 +278,24 @@ struct HeaderSection {
 }
 
 impl HeaderSection {
-    fn read(file: &mut File) -> Self {
-        let file_type_identifier = FileTypeIdentifier::read(file);
-        file.seek(SeekFrom::Start(64 * KB as u64)).unwrap();
-        let header_1 = Header::read(file);
-        file.seek(SeekFrom::Start(128 * KB as u64)).unwrap();
-        let header_2 = Header::read(file);
-        file.seek(SeekFrom::Start(192 * KB as u64)).unwrap();
-        let region_table_1 = RegionTable::read(file);
-        file.seek(SeekFrom::Start(256 * KB as u64)).unwrap();
-        let region_table_2 = RegionTable::read(file);
+    fn read(file: &mut File) -> Result<Self, Error> {
+        let file_type_identifier = FileTypeIdentifier::read(file)?;
+        file.seek(SeekFrom::Start(64 * KB as u64))?;
+        let header_1 = Header::read(file)?;
+        file.seek(SeekFrom::Start(128 * KB as u64))?;
+        let header_2 = Header::read(file)?;
+        file.seek(SeekFrom::Start(192 * KB as u64))?;
+        let region_table_1 = RegionTable::read(file)?;
+        file.seek(SeekFrom::Start(256 * KB as u64))?;
+        let region_table_2 = RegionTable::read(file)?;
 
-        Self {
+        Ok(Self {
             file_type_identifier,
             header_1,
             header_2,
             region_table_1,
             region_table_2,
-        }
+        })
     }
 }
 
@@ -301,32 +310,36 @@ struct Metadata {
     parent_locator: Option<metadata::ParentLocator>,
 }
 impl Metadata {
-    fn from_table(file: &mut File, metadata_table: &MetadataTable, offset: u64) -> Self {
+    fn from_table(
+        file: &mut File,
+        metadata_table: &MetadataTable,
+        offset: u64,
+    ) -> Result<Self, Error> {
         let file_parameters = metadata_table
-            .get::<metadata::FileParameters>(file, offset)
+            .get::<metadata::FileParameters>(file, offset)?
             .unwrap();
         let virtual_disk_size = metadata_table
-            .get::<metadata::VirtualDiskSize>(file, offset)
+            .get::<metadata::VirtualDiskSize>(file, offset)?
             .unwrap();
         let virtual_disk_id = metadata_table
-            .get::<metadata::VirtualDiskId>(file, offset)
+            .get::<metadata::VirtualDiskId>(file, offset)?
             .unwrap();
         let logical_sector_size = metadata_table
-            .get::<metadata::LogicalSectorSize>(file, offset)
+            .get::<metadata::LogicalSectorSize>(file, offset)?
             .unwrap();
         let physical_sector_size = metadata_table
-            .get::<metadata::PhysicalSectorSize>(file, offset)
+            .get::<metadata::PhysicalSectorSize>(file, offset)?
             .unwrap();
-        let parent_locator = metadata_table.get::<metadata::ParentLocator>(file, offset);
+        let parent_locator = metadata_table.get::<metadata::ParentLocator>(file, offset)?;
 
-        Self {
+        Ok(Self {
             file_parameters,
             virtual_disk_size,
             virtual_disk_id,
             logical_sector_size,
             physical_sector_size,
             parent_locator,
-        }
+        })
     }
 }
 
@@ -345,9 +358,9 @@ impl Vhdx {
     ///
     /// Through opening the file, if there is a log to be replayed it will be
     /// applied during this function.
-    pub fn load(path: impl AsRef<Path>) -> Vhdx {
-        let mut file = File::options().read(true).write(true).open(path).unwrap();
-        let header_section = HeaderSection::read(&mut file);
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let mut file = File::options().read(true).write(true).open(path)?;
+        let header_section = HeaderSection::read(&mut file)?;
 
         // Find the metadata table
         let metadata_table_section = header_section
@@ -357,14 +370,13 @@ impl Vhdx {
             .find(|entry| entry.guid == REGION_GUID_METADATA)
             .unwrap();
 
-        file.seek(SeekFrom::Start(metadata_table_section.file_offset))
-            .unwrap();
-        let metadata_table = MetadataTable::read(&mut file);
+        file.seek(SeekFrom::Start(metadata_table_section.file_offset))?;
+        let metadata_table = MetadataTable::read(&mut file)?;
         let metadata = Metadata::from_table(
             &mut file,
             &metadata_table,
             metadata_table_section.file_offset,
-        );
+        )?;
 
         // Find the BAT table
         let bat_table_section = header_section
@@ -373,9 +385,8 @@ impl Vhdx {
             .iter()
             .find(|entry| entry.guid == REGION_GUID_BAT)
             .unwrap();
-        file.seek(SeekFrom::Start(bat_table_section.file_offset))
-            .unwrap();
-        let bat = bat::Bat::read(&mut file, &metadata);
+        file.seek(SeekFrom::Start(bat_table_section.file_offset))?;
+        let bat = bat::Bat::read(&mut file, &metadata)?;
 
         let mut disk = Vhdx {
             file,
@@ -384,9 +395,9 @@ impl Vhdx {
             metadata,
             bat,
         };
-        disk.try_replay_log();
+        disk.try_replay_log()?;
 
-        disk
+        Ok(disk)
     }
 
     /// Use the disk as a [`Reader`] that implements [`std::io::Read`] and [`std::io::Seek`].
@@ -401,7 +412,7 @@ impl Vhdx {
     ///
     /// This function does not care if the log is empty or has no valid entries,
     /// and may not return valid entries if it is called in this state.
-    fn find_log(&mut self) -> LogSequence {
+    fn find_log(&mut self) -> Result<LogSequence, Error> {
         let current_header = self.current_header();
         let log_guid = current_header.log_guid;
         let log_offset = current_header.log_offset;
@@ -427,32 +438,39 @@ impl Vhdx {
                 entries: Vec::new(),
             };
             let mut head_value = current_tail;
-            self.file.seek(SeekFrom::Start(current_tail)).unwrap();
+            self.file.seek(SeekFrom::Start(current_tail))?;
 
             // Step 3
             loop {
-                let entry_offset = self.file.stream_position().unwrap();
+                let entry_offset = self.file.stream_position()?;
                 //println!("Attempting to read entry at offset {}", entry_offset);
-                if let Ok(entry) = log::Entry::read(&mut self.file) {
-                    // Check if the entry matches the guid in the file header
-                    if entry.header().log_guid() != log_guid {
+                match log::Entry::read(&mut self.file) {
+                    Ok(entry) => {
+                        // Check if the entry matches the guid in the file header
+                        if entry.header().log_guid() != log_guid {
+                            break;
+                        }
+                        if current.is_empty() {
+                            // Extend the current sequence to include the log entry
+                            current.sequence_number = entry.header().sequence_number;
+                            current.entries.push((entry_offset - log_offset, entry));
+                            head_value = entry_offset;
+                        } else if entry.header().sequence_number
+                            == current.head().unwrap().header().sequence_number + 1
+                        {
+                            // Extend the current sequence to include the log entry
+                            current.entries.push((entry_offset - log_offset, entry));
+                            head_value = entry_offset;
+                        }
+                    }
+                    Err(Error::InvalidSignature) => {
+                        // Not a valid entry, stop searching
                         break;
                     }
-                    if current.is_empty() {
-                        // Extend the current sequence to include the log entry
-                        current.sequence_number = entry.header().sequence_number;
-                        current.entries.push((entry_offset - log_offset, entry));
-                        head_value = entry_offset;
-                    } else if entry.header().sequence_number
-                        == current.head().unwrap().header().sequence_number + 1
-                    {
-                        // Extend the current sequence to include the log entry
-                        current.entries.push((entry_offset - log_offset, entry));
-                        head_value = entry_offset;
+                    Err(e) => {
+                        // Unexpected error, propogate
+                        Err(e)?;
                     }
-                } else {
-                    // Not a valid entry, stop searching
-                    break;
                 }
             }
 
@@ -491,7 +509,7 @@ impl Vhdx {
         }
 
         // Check if the file has been truncated since the log was written
-        let file_size = self.file.seek(SeekFrom::End(0)).unwrap();
+        let file_size = self.file.seek(SeekFrom::End(0))?;
         if file_size < candidate.head().unwrap().header().flushed_file_offset {
             panic!("file has been truncated, cannot open");
         }
@@ -504,18 +522,18 @@ impl Vhdx {
             active_sequence.head().unwrap().header().sequence_number,
         );
 
-        active_sequence
+        Ok(active_sequence)
     }
 
-    fn try_replay_log(&mut self) {
+    fn try_replay_log(&mut self) -> Result<(), Error> {
         // Check if we should replay the log
         let current_header = self.current_header();
         if current_header.log_guid == Guid::ZERO {
-            return;
+            return Ok(());
         }
 
         println!("replaying log");
-        let sequence = self.find_log();
+        let sequence = self.find_log()?;
 
         // Replay the log
         for entry in sequence.iter() {
@@ -528,7 +546,7 @@ impl Vhdx {
                         }
 
                         // TODO: Do we need to expand the file?
-                        let file_length = self.file.seek(SeekFrom::End(0)).unwrap();
+                        let file_length = self.file.seek(SeekFrom::End(0))?;
                         if desc.file_offset() >= file_length {
                             panic!("zeros write start is greater than file length");
                         }
@@ -536,10 +554,10 @@ impl Vhdx {
                             panic!("zeros write start is greater than file length");
                         }
 
-                        self.file.seek(SeekFrom::Start(desc.file_offset())).unwrap();
+                        self.file.seek(SeekFrom::Start(desc.file_offset()))?;
                         let num_sectors = desc.zero_length() / (4 * KB as u64);
                         for _ in 0..num_sectors {
-                            self.file.write_all(&ZEROS).unwrap();
+                            self.file.write_all(&ZEROS)?;
                         }
                     }
                     log::Descriptor::Data(desc) => {
@@ -550,32 +568,34 @@ impl Vhdx {
                         let data_sector = &entry.data_sectors()[data_sector_offset];
 
                         // TODO: Do we need to expand the file?
-                        let file_length = self.file.seek(SeekFrom::End(0)).unwrap();
+                        let file_length = self.file.seek(SeekFrom::End(0))?;
                         if desc.file_offset() >= file_length {
                             panic!("data write start is greater than file length");
                         }
                         if desc.file_offset() + 4 * KB as u64 >= file_length {
                             panic!("data write end is greater than file length");
                         }
-                        self.file.seek(SeekFrom::Start(desc.file_offset())).unwrap();
-                        self.file.write_all(&desc.leading_bytes()).unwrap();
-                        self.file.write_all(data_sector.data()).unwrap();
-                        self.file.write_all(&desc.trailing_bytes()).unwrap();
+                        self.file.seek(SeekFrom::Start(desc.file_offset()))?;
+                        self.file.write_all(&desc.leading_bytes())?;
+                        self.file.write_all(data_sector.data())?;
+                        self.file.write_all(&desc.trailing_bytes())?;
 
                         data_sector_offset += 1;
                     }
                 }
             }
         }
+
+        Ok(())
     }
 
-    fn debug_log_sectors(&mut self, log_offset: u64, log_length: u32) {
+    fn debug_log_sectors(&mut self, log_offset: u64, log_length: u32) -> Result<(), Error> {
         let mut entry_offset = log_offset;
         let stride = 4 * KB as u64;
         while entry_offset - log_offset < log_length as u64 {
-            self.file.seek(SeekFrom::Start(entry_offset)).unwrap();
+            self.file.seek(SeekFrom::Start(entry_offset))?;
             let mut buffer = vec![0; 64];
-            self.file.read_exact(&mut buffer).unwrap();
+            self.file.read_exact(&mut buffer)?;
             let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
             if !buffer.iter().all(|c| *c == 0) {
                 println!(
@@ -587,6 +607,7 @@ impl Vhdx {
             }
             entry_offset += stride;
         }
+        Ok(())
     }
 
     fn current_header(&self) -> &Header {

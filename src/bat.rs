@@ -1,5 +1,7 @@
 use std::{fs::File, io::Read};
 
+use crate::Error;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PayloadBatEntryState {
     NotPresent,
@@ -31,17 +33,17 @@ pub struct BatEntry {
 }
 
 impl BatEntry {
-    fn read(file: &mut File) -> Self {
+    fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 8];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
-        let value = u64::from_le_bytes(buffer.try_into().unwrap());
+        let value = u64::from_le_bytes(buffer.try_into().expect("infallible"));
         let state = PayloadBatEntryState::from_bits(value as u8 & 0b111);
 
         let mask = 0xFFFFFFFFFFF00000;
         let file_offset = value & mask;
 
-        Self { state, file_offset }
+        Ok(Self { state, file_offset })
     }
 
     pub fn file_offset(&self) -> u64 {
@@ -61,7 +63,7 @@ pub struct Bat {
 }
 
 impl Bat {
-    pub(crate) fn read(file: &mut File, metadata: &crate::Metadata) -> Self {
+    pub(crate) fn read(file: &mut File, metadata: &crate::Metadata) -> Result<Self, Error> {
         let virt_disk_size = metadata.virtual_disk_size.virtual_disk_size();
         let logical_sector_size = metadata.logical_sector_size.logical_sector_size();
         let block_size = metadata.file_parameters.block_size() as u64;
@@ -75,13 +77,13 @@ impl Bat {
 
         let entries = (0..total_bat_entries)
             .map(|_| BatEntry::read(file))
-            .collect();
+            .collect::<Result<_, _>>()?;
 
-        Self {
+        Ok(Self {
             block_size,
             chunk_ratio,
             entries,
-        }
+        })
     }
 
     /// Get the associated entry for a given disk offset.

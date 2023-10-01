@@ -3,7 +3,7 @@ use std::{
     io::{Read, Seek, SeekFrom},
 };
 
-use crate::{guid::Guid, KB, MB};
+use crate::{guid::Guid, Error, KB, MB};
 
 const LOG_ENTRY_SIGNATURE: &str = "loge";
 const ZERO_DESCRIPTOR_SIGNATURE: &str = "zero";
@@ -24,9 +24,9 @@ pub struct LogEntryHeader {
 }
 
 impl LogEntryHeader {
-    pub fn read(file: &mut File) -> Result<Self, ()> {
+    pub fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 64];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
         let checksum = buffer[4..8].try_into().unwrap();
@@ -39,7 +39,7 @@ impl LogEntryHeader {
         let last_file_offset = u64::from_le_bytes(buffer[56..64].try_into().unwrap());
 
         if signature != LOG_ENTRY_SIGNATURE {
-            return Err(());
+            return Err(Error::InvalidSignature);
         }
         assert_eq!(entry_length % (4 * KB as u32), 0);
         assert_eq!(tail % (4 * KB as u32), 0);
@@ -80,9 +80,9 @@ pub struct ZeroDescriptor {
 }
 
 impl ZeroDescriptor {
-    pub fn read(file: &mut File) -> Self {
+    pub fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 32];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
         let zero_length = u64::from_le_bytes(buffer[8..16].try_into().unwrap());
@@ -93,12 +93,12 @@ impl ZeroDescriptor {
         assert_eq!(zero_length % (4 * KB as u64), 0);
         assert_eq!(file_offset % (4 * KB as u64), 0);
 
-        Self {
+        Ok(Self {
             signature,
             zero_length,
             file_offset,
             sequence_number,
-        }
+        })
     }
 
     pub fn zero_length(&self) -> u64 {
@@ -124,9 +124,9 @@ pub struct DataDescriptor {
 }
 
 impl DataDescriptor {
-    pub fn read(file: &mut File) -> Self {
+    pub fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 32];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
         let trailing_bytes = buffer[4..8].try_into().unwrap();
@@ -137,13 +137,13 @@ impl DataDescriptor {
         assert_eq!(signature, DATA_DESCRIPTOR_SIGNATURE);
         assert_eq!(file_offset % (4 * KB as u64), 0);
 
-        Self {
+        Ok(Self {
             signature,
             trailing_bytes,
             leading_bytes,
             file_offset,
             sequence_number,
-        }
+        })
     }
 
     pub fn sequence_number(&self) -> u64 {
@@ -181,9 +181,9 @@ impl std::fmt::Debug for DataSector {
 }
 
 impl DataSector {
-    pub fn read(file: &mut File) -> Self {
+    pub fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; 4096];
-        file.read_exact(&mut buffer).unwrap();
+        file.read_exact(&mut buffer)?;
 
         let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
         let sequence_high = u32::from_le_bytes(buffer[4..8].try_into().unwrap());
@@ -192,12 +192,12 @@ impl DataSector {
 
         assert_eq!(signature, DATA_SECTOR_SIGNATURE);
 
-        Self {
+        Ok(Self {
             signature,
             sequence_high,
             data,
             sequence_low,
-        }
+        })
     }
 
     pub fn data(&self) -> &[u8; 4084] {
@@ -222,8 +222,8 @@ pub struct Entry {
 
 impl Entry {
     /// File cursor will be at the end of the entry after this function
-    pub fn read(file: &mut File) -> Result<Self, ()> {
-        let original_position = file.stream_position().unwrap();
+    pub fn read(file: &mut File) -> Result<Self, Error> {
+        let original_position = file.stream_position()?;
 
         let header = LogEntryHeader::read(file)?;
         let mut descriptors = Vec::with_capacity(header.descriptor_count as usize);
@@ -231,33 +231,32 @@ impl Entry {
 
         for _ in 0..header.descriptor_count {
             let mut buffer = vec![0; 4];
-            file.read_exact(&mut buffer).unwrap();
+            file.read_exact(&mut buffer)?;
             let signature = std::str::from_utf8(&buffer[0..4]).unwrap();
 
-            file.seek(std::io::SeekFrom::Current(-4)).unwrap();
+            file.seek(std::io::SeekFrom::Current(-4))?;
 
             let descriptor: Descriptor = match signature {
                 ZERO_DESCRIPTOR_SIGNATURE => {
-                    let descriptor = ZeroDescriptor::read(file);
+                    let descriptor = ZeroDescriptor::read(file)?;
                     Descriptor::Zero(descriptor)
                 }
                 DATA_DESCRIPTOR_SIGNATURE => {
-                    let descriptor = DataDescriptor::read(file);
+                    let descriptor = DataDescriptor::read(file)?;
                     Descriptor::Data(descriptor)
                 }
-                _ => panic!("Unknown descriptor signature: '{}'", signature),
+                _ => Err(Error::InvalidSignature)?,
             };
 
             descriptors.push(descriptor);
         }
 
         // Align position to the next 4KB boundary
-        let current_position = file.stream_position().unwrap();
+        let current_position = file.stream_position()?;
         file.seek(SeekFrom::Start(next_multiple_of(
             current_position,
             4 * KB as u64,
-        )))
-        .unwrap();
+        )))?;
 
         let num_data_sectors = descriptors
             .iter()
@@ -271,11 +270,11 @@ impl Entry {
 
         // Read all the data sectors, in order
         for _ in 0..num_data_sectors {
-            data_sectors.push(DataSector::read(file));
+            data_sectors.push(DataSector::read(file)?);
         }
 
         // After reading the data sectors, the file position should be after the end of the entry
-        let current_position = file.stream_position().unwrap();
+        let current_position = file.stream_position()?;
         assert_eq!(
             current_position,
             original_position + header.entry_length as u64
