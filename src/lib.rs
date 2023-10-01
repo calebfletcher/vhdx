@@ -65,7 +65,7 @@ impl FileTypeIdentifier {
 
         let creator_iter = buffer[8..(8 + 512)]
             .chunks_exact(2)
-            .map(|bytes| u16::from_le_bytes(bytes.try_into().unwrap()))
+            .map(|bytes| u16::from_le_bytes(bytes.try_into().expect("infallible")))
             .take_while(|&ch| ch != 0);
         let creator = char::decode_utf16(creator_iter)
             .collect::<Result<String, _>>()
