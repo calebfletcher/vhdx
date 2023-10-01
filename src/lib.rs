@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 use std::{
+    char::DecodeUtf16Error,
     fs::File,
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
@@ -40,6 +41,8 @@ pub enum Error {
     InvalidSignature,
     #[error("invalid UTF-8: {0}")]
     InvalidUtf8(#[from] Utf8Error),
+    #[error("invalid UTF-16: {0}")]
+    InvalidUtf16(#[from] DecodeUtf16Error),
 }
 
 impl From<std::string::FromUtf8Error> for Error {
@@ -67,9 +70,7 @@ impl FileTypeIdentifier {
             .chunks_exact(2)
             .map(|bytes| u16::from_le_bytes(bytes.try_into().expect("infallible")))
             .take_while(|&ch| ch != 0);
-        let creator = char::decode_utf16(creator_iter)
-            .collect::<Result<String, _>>()
-            .unwrap();
+        let creator = char::decode_utf16(creator_iter).collect::<Result<String, _>>()?;
 
         Ok(Self { signature, creator })
     }
