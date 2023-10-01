@@ -28,7 +28,7 @@ impl LogEntryHeader {
         let mut buffer = vec![0; 64];
         file.read_exact(&mut buffer)?;
 
-        let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+        let signature = String::from_utf8(buffer[0..4].to_vec())?;
         let checksum = buffer[4..8].try_into().expect("infallible");
         let entry_length = u32::from_le_bytes(buffer[8..12].try_into().expect("infallible"));
         let tail = u32::from_le_bytes(buffer[12..16].try_into().expect("infallible"));
@@ -85,7 +85,7 @@ impl ZeroDescriptor {
         let mut buffer = vec![0; 32];
         file.read_exact(&mut buffer)?;
 
-        let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+        let signature = String::from_utf8(buffer[0..4].to_vec())?;
         let zero_length = u64::from_le_bytes(buffer[8..16].try_into().expect("infallible"));
         let file_offset = u64::from_le_bytes(buffer[16..24].try_into().expect("infallible"));
         let sequence_number = u64::from_le_bytes(buffer[24..32].try_into().expect("infallible"));
@@ -129,7 +129,7 @@ impl DataDescriptor {
         let mut buffer = vec![0; 32];
         file.read_exact(&mut buffer)?;
 
-        let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+        let signature = String::from_utf8(buffer[0..4].to_vec())?;
         let trailing_bytes = buffer[4..8].try_into().expect("infallible");
         let leading_bytes = buffer[8..16].try_into().expect("infallible");
         let file_offset = u64::from_le_bytes(buffer[16..24].try_into().expect("infallible"));
@@ -186,7 +186,7 @@ impl DataSector {
         let mut buffer = vec![0; 4096];
         file.read_exact(&mut buffer)?;
 
-        let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+        let signature = String::from_utf8(buffer[0..4].to_vec())?;
         let sequence_high = u32::from_le_bytes(buffer[4..8].try_into().expect("infallible"));
         let data = Box::<[u8]>::from(&buffer[8..4092])
             .try_into()
@@ -235,7 +235,7 @@ impl Entry {
         for _ in 0..header.descriptor_count {
             let mut buffer = vec![0; 4];
             file.read_exact(&mut buffer)?;
-            let signature = std::str::from_utf8(&buffer[0..4]).unwrap();
+            let signature = std::str::from_utf8(&buffer[0..4])?;
 
             file.seek(std::io::SeekFrom::Current(-4))?;
 

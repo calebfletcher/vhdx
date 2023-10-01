@@ -6,6 +6,7 @@ use std::{
     fs::File,
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
+    str::Utf8Error,
 };
 use thiserror::Error;
 
@@ -37,6 +38,14 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("invalid signature")]
     InvalidSignature,
+    #[error("invalid UTF-8: {0}")]
+    InvalidUtf8(#[from] Utf8Error),
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    fn from(value: std::string::FromUtf8Error) -> Self {
+        Self::InvalidUtf8(value.utf8_error())
+    }
 }
 
 #[derive(Debug)]
@@ -51,7 +60,7 @@ impl FileTypeIdentifier {
     fn read(file: &mut File) -> Result<Self, Error> {
         let mut buffer = vec![0; KB];
         file.read_exact(&mut buffer)?;
-        let signature = String::from_utf8_lossy(&buffer[..8]).into_owned();
+        let signature = String::from_utf8(buffer[..8].to_vec())?;
         assert_eq!(signature, FILE_SIGNATURE);
 
         let creator_iter = buffer[8..(8 + 512)]
@@ -87,7 +96,7 @@ impl Header {
         let mut buffer = vec![0; 128];
         file.read_exact(&mut buffer)?;
 
-        let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+        let signature = String::from_utf8(buffer[0..4].to_vec())?;
         let checksum = buffer[4..8].try_into().expect("infallible");
         let sequence_number = u64::from_le_bytes(buffer[8..16].try_into().expect("infallible"));
 
@@ -167,7 +176,7 @@ impl RegionTable {
         let mut buffer = vec![0; 16];
         file.read_exact(&mut buffer)?;
 
-        let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+        let signature = String::from_utf8(buffer[0..4].to_vec())?;
         let checksum = buffer[4..8].try_into().expect("infallible");
         let entry_count = u32::from_le_bytes(buffer[8..12].try_into().expect("infallible"));
 
@@ -241,7 +250,7 @@ impl MetadataTable {
         let mut buffer = vec![0; 32];
         file.read_exact(&mut buffer)?;
 
-        let signature = String::from_utf8(buffer[0..8].to_vec()).unwrap();
+        let signature = String::from_utf8(buffer[0..8].to_vec())?;
         let entry_count = u16::from_le_bytes(buffer[10..12].try_into().expect("infallible"));
 
         assert_eq!(signature, METADATA_TABLE_SIGNATURE);
@@ -596,7 +605,7 @@ impl Vhdx {
             self.file.seek(SeekFrom::Start(entry_offset))?;
             let mut buffer = vec![0; 64];
             self.file.read_exact(&mut buffer)?;
-            let signature = String::from_utf8(buffer[0..4].to_vec()).unwrap();
+            let signature = String::from_utf8(buffer[0..4].to_vec())?;
             if !buffer.iter().all(|c| *c == 0) {
                 println!(
                     "Entry {}: '{}' (offset {})",
