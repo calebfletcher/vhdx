@@ -680,7 +680,10 @@ pub struct Reader<'a> {
 impl Read for Reader<'_> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         // Read at most to the end of this block
-        let (entry, offset) = self.disk.bat.offset_to_entry(self.offset);
+        let Some((entry, offset)) = self.disk.bat.offset_to_entry(self.offset) else {
+            // eof
+            return Ok(0);
+        };
         let block_size = self.disk.metadata.file_parameters.block_size() as usize;
         let bytes_remaining_in_block = block_size as u64 - offset;
         let num_to_read = buf.len().min(bytes_remaining_in_block as usize);

@@ -90,13 +90,16 @@ impl Bat {
     ///
     /// Returns both the entry that contains the offset, as well as the offset
     /// within that entry.
-    pub fn offset_to_entry(&self, offset: u64) -> (&BatEntry, u64) {
+    ///
+    /// Returns none if the offset is outside of the range based on the entries
+    /// in the bat table.
+    pub fn offset_to_entry(&self, offset: u64) -> Option<(&BatEntry, u64)> {
         let payload_block_index = offset / self.block_size;
         let sector_bitmap_blocks = payload_block_index / self.chunk_ratio;
         let bat_index = payload_block_index + sector_bitmap_blocks;
-        let entry = self.entries.get(bat_index as usize).unwrap();
+        let entry = self.entries.get(bat_index as usize)?;
         let base_address = payload_block_index * self.block_size;
-        (entry, offset - base_address)
+        Some((entry, offset - base_address))
     }
 }
 
